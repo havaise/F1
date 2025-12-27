@@ -5,6 +5,7 @@ public class EngineModule : MonoBehaviour
     [Header("Import parametrs")]
     [SerializeField] private bool _import = false;
     [SerializeField] private KartConfig _kartConfig;
+
     [Header("RPM settings")]
     [SerializeField] private float _idleRpm = 1000f;
     [SerializeField] private float _maxRpm = 8000f;
@@ -31,9 +32,8 @@ public class EngineModule : MonoBehaviour
     private void Awake()
     {
         if (_import)
-        {
             Initialize();
-        }
+
         CurrentRpm = _idleRpm;
         _invInertiaFactor = 60f / (2f * Mathf.PI * Mathf.Max(_flywheelInertia, 0.0001f));
     }
@@ -47,28 +47,28 @@ public class EngineModule : MonoBehaviour
             _maxRpm = _kartConfig.maxRpm;
         }
     }
+
     public float Simulate(float throttleInput, float forwardSpeed, float deltaTime)
     {
-        float targetThrottle = Mathf.Clamp01(throttleInput);
-        SmoothedThrottle = Mathf.MoveTowards(SmoothedThrottle, targetThrottle, _throttleResponse * deltaTime);
+        float target = Mathf.Clamp01(throttleInput);
+        SmoothedThrottle = Mathf.MoveTowards(SmoothedThrottle, target, _throttleResponse * deltaTime);
 
         UpdateRevLimiterFactor();
 
-        float maxTorqueAtRpm = _torqueCurve.Evaluate(CurrentRpm);
-
+        float peakTorque = _torqueCurve.Evaluate(CurrentRpm);
         float effectiveThrottle = SmoothedThrottle * RevLimiterFactor;
-        float driveTorque = maxTorqueAtRpm * effectiveThrottle;
 
+        float driveTorque = peakTorque * effectiveThrottle;
         float frictionTorque = _engineFrictionCoeff * CurrentRpm;
         float loadTorque = _loadTorqueCoeff * Mathf.Abs(forwardSpeed);
 
-        float netTorque = driveTorque - frictionTorque - loadTorque;
+        float net = driveTorque - frictionTorque - loadTorque;
 
-        float rpmDot = netTorque * _invInertiaFactor;
+        float rpmDot = net * _invInertiaFactor;
         CurrentRpm += rpmDot * deltaTime;
 
         if (CurrentRpm < _idleRpm) CurrentRpm = _idleRpm;
-        if (CurrentRpm > _maxRpm)  CurrentRpm = _maxRpm;
+        if (CurrentRpm > _maxRpm) CurrentRpm = _maxRpm;
 
         CurrentTorque = driveTorque;
         return CurrentTorque;

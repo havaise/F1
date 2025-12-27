@@ -25,17 +25,21 @@ public class ControllerModule : MonoBehaviour
     [SerializeField] private float _gearRatio = 8f;
     [SerializeField] private float _drivetrainEfficiency = 0.9f;
 
-
     [Header("Handbrake")]
     [SerializeField] private KeyCode handbrakeKey = KeyCode.Space;
-    [SerializeField] private float handbrakeBrakeForce = 2500f; 
+    [SerializeField] private float handbrakeBrakeForce = 2500f;
 
     private InputAction _moveAction;
+
     private float _throttleInput;
     private float _steepInput;
     private bool _handbrakePressed;
 
-    private float _frontLeftNormalForce, _frontRightNormalForce, _rearLeftNormalForce, _rearRightNormalForce;
+    private float _frontLeftNormalForce;
+    private float _frontRightNormalForce;
+    private float _rearLeftNormalForce;
+    private float _rearRightNormalForce;
+
     private Rigidbody _rigidbody;
     private Vector3 g = Physics.gravity;
 
@@ -62,13 +66,16 @@ public class ControllerModule : MonoBehaviour
     {
         _playerInput.Enable();
         _rigidbody = GetComponent<Rigidbody>();
+
         var map = _playerInput.FindActionMap("Kart");
         _moveAction = map.FindAction("Move");
 
-        if (_import) Initialize();
+        if (_import)
+            Initialize();
 
         frontLeftInitialRot = _frontLeftWheel.localRotation;
         frontRightInitialRot = _frontRightWheel.localRotation;
+
         ComputeStaticWheelLoad();
     }
 
@@ -93,52 +100,43 @@ public class ControllerModule : MonoBehaviour
 
     private void Update()
     {
-        ReadInput();
-        RotateFrontWheels();
+        PollInput();
+        ApplyVisualSteer();
     }
 
-    private void ReadInput()
+    private void PollInput()
     {
         Vector2 move = _moveAction.ReadValue<Vector2>();
+
         _steepInput = Mathf.Clamp(move.x, -1, 1);
         _throttleInput = Mathf.Clamp(move.y, -1, 1);
 
-        _handbrakePressed = Input.GetKey(handbrakeKey);  // Ручник
+        // Ручник
+        _handbrakePressed = Input.GetKey(handbrakeKey);
     }
 
-    void RotateFrontWheels()
+    private void ApplyVisualSteer()
     {
         float steerAngle = maxSteeringAngle * _steepInput;
         Quaternion steerRot = Quaternion.Euler(0, steerAngle, 0);
+
         _frontLeftWheel.localRotation = frontLeftInitialRot * steerRot;
         _frontRightWheel.localRotation = frontRightInitialRot * steerRot;
     }
-    
 
-    void ComputeStaticWheelLoad()
+    private void ComputeStaticWheelLoad()
     {
         float mass = _rigidbody.mass;
         float totalWeight = mass * Mathf.Abs(g.y);
+
         float frontWeight = totalWeight * _frontAxisShare;
         float rearWeight = totalWeight - frontWeight;
+
         _frontRightNormalForce = frontWeight * 0.5f;
         _frontLeftNormalForce = _frontRightNormalForce;
+
         _rearRightNormalForce = rearWeight * 0.5f;
         _rearLeftNormalForce = _rearRightNormalForce;
-    }
-
-    private void ApplyEngineForces()
-    {
-        Vector3 forward = transform.forward;
-        float speedAlongForward = Vector3.Dot(_rigidbody.linearVelocity, forward);
-        if (_throttleInput > 0 && speedAlongForward > maxSpeed) return;
-
-        float driveTorque = engineTorque * _throttleInput;
-        float driveForcePerWheel = driveTorque / wheelRadius / 2;
-        Vector3 forceRear = forward * driveForcePerWheel;
-
-        _rigidbody.AddForceAtPosition(forceRear, _rearLeftWheel.position, ForceMode.Force);
-        _rigidbody.AddForceAtPosition(forceRear, _rearRightWheel.position, ForceMode.Force);
     }
 
     private void FixedUpdate()
@@ -151,14 +149,32 @@ public class ControllerModule : MonoBehaviour
         ApplyWheelForce(_rearRightWheel, _rearRightNormalForce, isSteer: false, isDrive: true);
     }
 
-    void ApplyWheelForce(Transform wheel, float normalForce, bool isSteer, bool isDrive)
+    private void ApplyEngineForces()
+    {
+        Vector3 fwd = transform.forward;
+
+        float along = Vector3.Dot(_rigidbody.linearVelocity, fwd);
+        if (_throttleInput > 0 && along > maxSpeed)
+            return;
+
+        float driveTorque = engineTorque * _throttleInput;
+        float driveForcePerWheel = driveTorque / wheelRadius / 2f;
+
+        Vector3 rearForce = fwd * driveForcePerWheel;
+        _rigidbody.AddForceAtPosition(rearForce, _rearLeftWheel.position, ForceMode.Force);
+        _rigidbody.AddForceAtPosition(rearForce, _rearRightWheel.position, ForceMode.Force);
+    }
+
+    private void ApplyWheelForce(Transform wheel, float normalForce, bool isSteer, bool isDrive)
     {
         Vector3 wheelPos = wheel.position;
-        Vector3 wheelForward = wheel.forward;
+        Vector3 wheelFwd = wheel.forward;
         Vector3 wheelRight = wheel.right;
-        Vector3 velocity = _rigidbody.GetPointVelocity(wheelPos);
-        float vlong = Vector3.Dot(velocity, wheelForward);
-        float vlat = Vector3.Dot(velocity, wheelRight);
+
+        Vector3 pointVel = _rigidbody.GetPointVelocity(wheelPos);
+
+        float vlong = Vector3.Dot(pointVel, wheelFwd);
+        float vlat = Vector3.Dot(pointVel, wheelRight);
 
         Fx = 0f;
         Fy = 0f;
@@ -166,11 +182,12 @@ public class ControllerModule : MonoBehaviour
         if (isDrive)
         {
             speedAlongForward = Vector3.Dot(_rigidbody.linearVelocity, transform.forward);
+
             float engineTorqueOut = _engine.Simulate(_throttleInput, speedAlongForward, Time.fixedDeltaTime);
             float totalWheelTorque = engineTorqueOut * _gearRatio * _drivetrainEfficiency;
+
             float wheelTorque = totalWheelTorque * 0.5f;
             Fx += wheelTorque / wheelRadius;
-
 
             if (_handbrakePressed)
             {
@@ -193,43 +210,69 @@ public class ControllerModule : MonoBehaviour
         if (forceLenght > frictionlimit)
         {
             float scale = frictionlimit / forceLenght;
+
+            // В исходнике было Fy += scale; Fx += scale; — оставлено как есть.
             Fy += scale;
             Fx += scale;
         }
 
-
-        Vector3 force = wheelForward * Fx + wheelRight * Fy;
+        Vector3 force = wheelFwd * Fx + wheelRight * Fy;
         _rigidbody.AddForceAtPosition(force, wheel.position, ForceMode.Force);
     }
 
-
-    void OnGUI()
+    // Телеметрия: та же информация, но по-другому сверстана.
+    private void OnGUI()
     {
-        GUI.color = Color.black;
+        var panel = new Rect(12f, 12f, 520f, 260f);
 
-        GUILayout.BeginArea(new Rect(0, 0, 420, 320));
-        GUIStyle style = new GUIStyle();
-        style.fontSize = 35;
+        // фон-плашка
+        Color oldColor = GUI.color;
+        GUI.color = new Color(0f, 0f, 0f, 0.55f);
+        GUI.Box(panel, GUIContent.none);
+        GUI.color = oldColor;
 
-        GUILayout.Label($"Speed: {speedAlongForward:0.0} m/s ({(speedAlongForward * 3.6f):0.0} km/h)", style);
-        GUILayout.Label($"Engine RPM: {_engine.CurrentRpm:0} RPM", style);
+        var titleStyle = new GUIStyle(GUI.skin.label)
+        {
+            fontSize = 20,
+            fontStyle = FontStyle.Bold,
+            normal = { textColor = Color.white }
+        };
 
-        GUILayout.Label($"Engine Torque: {_engine.CurrentTorque:0.0} N·m", style);
+        var rowStyle = new GUIStyle(GUI.skin.label)
+        {
+            fontSize = 16,
+            normal = { textColor = Color.white }
+        };
 
+        float x = panel.x + 14f;
+        float y = panel.y + 12f;
+        float w = panel.width - 28f;
+
+        GUI.Label(new Rect(x, y, w, 24f), "KART TELEMETRY", titleStyle);
+        y += 34f;
+
+        string speedLine = $"Speed   {speedAlongForward:0.0} m/s   ({(speedAlongForward * 3.6f):0.0} km/h)";
+        string rpmLine = $"RPM     {_engine.CurrentRpm:0}";
+        string tqLine = $"Torque  {_engine.CurrentTorque:0.0} N·m";
+        string fxLine = $"Fx      {Fx:0.0} N";
+        string fyLine = $"Fy      {Fy:0.0} N";
+
+        GUI.Label(new Rect(x, y, w, 20f), speedLine, rowStyle); y += 22f;
+        GUI.Label(new Rect(x, y, w, 20f), rpmLine, rowStyle); y += 22f;
+        GUI.Label(new Rect(x, y, w, 20f), tqLine, rowStyle); y += 28f;
+
+        GUI.Label(new Rect(x, y, w, 20f), "Wheel forces", rowStyle); y += 22f;
+        GUI.Label(new Rect(x, y, w, 20f), fxLine, rowStyle); y += 22f;
+        GUI.Label(new Rect(x, y, w, 20f), fyLine, rowStyle); y += 22f;
 
         if (_handbrakePressed)
         {
-            GUILayout.Label("HANDBRAKE ON!", style);
+            var warnStyle = new GUIStyle(rowStyle)
+            {
+                fontStyle = FontStyle.Bold,
+                normal = { textColor = new Color(1f, 0.35f, 0.35f, 1f) }
+            };
+            GUI.Label(new Rect(x, panel.yMax - 30f, w, 22f), "HANDBRAKE ON", warnStyle);
         }
-
-
-        GUILayout.Label("Wheel Forces:", style);
-
-        GUILayout.Label($"Fx: {Fx:0.0} N", style);
-        GUILayout.Label($"Fy: {Fy:0.0} N", style);
-
-
-        GUILayout.EndArea();
     }
-    
 }
