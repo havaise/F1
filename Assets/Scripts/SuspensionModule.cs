@@ -14,16 +14,16 @@ public class SuspensionModule : MonoBehaviour
     // Нормальная (не нагруженная) длина подвески — расстояние до колеса в покое.
     [SerializeField] private float springTravel = 0.2f;
     // Максимальное сжатие подвески: ход пружины.
-    [SerializeField] private float springStiffness = 20000f;
+    [SerializeField] private float springStiffness = 2000f;
     // Жёсткость пружины k (N/m). Чем выше — тем жестче подвеска.
-    [SerializeField] private float damperStiffness = 3500f;
+    [SerializeField] private float damperStiffness = 350f;
     // Коэффициент демпфера: сопротивление скорости сжатия/расширения.
-    [SerializeField] private float wheelRadius = 0.35f;
+    [SerializeField] private float wheelRadius = 0.3f;
     // Радиус колеса — нужен чтобы понять, где именно оно “касается” дороги.
 
     [Header("Anti-Roll Bar")]
-    [SerializeField] private float frontAntiRollStiffness = 8000f; // жёсткость переднего ARB
-    [SerializeField] private float rearAntiRollStiffness = 6000f; // жёсткость заднего ARB
+    [SerializeField] private float frontAntiRollStiffness = 800f; // жёсткость переднего ARB
+    [SerializeField] private float rearAntiRollStiffness = 600f; // жёсткость заднего ARB
 
     [Header("Telemetry")]
     [SerializeField] private bool showTelemetry = true;
@@ -118,7 +118,7 @@ public class SuspensionModule : MonoBehaviour
         if (!showTelemetry) return;
         if (_rb == null) return;
 
-        var box = new Rect(12f, 290f, 420f, 300f);
+        var box = new Rect(12f, 290f, 420f, 170f);
 
         Color prev = GUI.color;
         GUI.color = new Color(0f, 0f, 0f, 0.45f);
